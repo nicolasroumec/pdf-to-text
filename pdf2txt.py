@@ -1,48 +1,60 @@
 import os
 import sys
 import json
+
+# En modo --windowed no hay consola: pymupdf4llm imprime progreso y sys.stdout es None.
+for _s in ("stdout", "stderr"):
+    if getattr(sys, _s) is None:
+        setattr(sys, _s, open(os.devnull, "w", encoding="utf-8"))
+
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog
 from pypdf import PdfReader
+import pymupdf4llm
 
 BASE = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else __file__)
 DEFAULT_SALIDA = os.path.join(BASE, "txts")  # por defecto: subcarpeta al lado del .exe
 CONFIG = os.path.join(BASE, "config.json")
 
 
-def cargar_salida():
+def cargar_config():
     try:
         with open(CONFIG, encoding="utf-8") as f:
-            return json.load(f).get("salida") or DEFAULT_SALIDA
+            c = json.load(f)
     except (OSError, ValueError):
-        return DEFAULT_SALIDA
+        c = {}
+    return c.get("salida") or DEFAULT_SALIDA, c.get("formato") or "txt"
 
 
-def guardar_salida(ruta):
+def guardar_config(ruta, formato):
     with open(CONFIG, "w", encoding="utf-8") as f:
-        json.dump({"salida": ruta}, f)
+        json.dump({"salida": ruta, "formato": formato}, f)
 
 
-def convertir(pdf_path, salida):
+def convertir(pdf_path, salida, formato):
     os.makedirs(salida, exist_ok=True)
-    reader = PdfReader(pdf_path)
-    texto = "\n".join((p.extract_text() or "") for p in reader.pages)
-    nombre = os.path.splitext(os.path.basename(pdf_path))[0] + ".txt"
-    txt_path = os.path.join(salida, nombre)
-    with open(txt_path, "w", encoding="utf-8") as f:
-        f.write(texto)
-    return txt_path
+    if formato == "md":
+        contenido = pymupdf4llm.to_markdown(pdf_path)  # títulos, listas, tablas
+    else:
+        reader = PdfReader(pdf_path)
+        contenido = "\n".join((p.extract_text() or "") for p in reader.pages)
+    nombre = os.path.splitext(os.path.basename(pdf_path))[0] + "." + formato
+    out_path = os.path.join(salida, nombre)
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(contenido)
+    return out_path
 
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("PDF to Text")
-        self.geometry("480x420")
-        self.minsize(440, 380)
+        self.geometry("480x470")
+        self.minsize(440, 430)
         self.configure(bg="#f4f4f5")
-        self.salida = cargar_salida()
+        self.salida, formato_ini = cargar_config()
+        self.formato = tk.StringVar(value=formato_ini)
 
         st = ttk.Style(self)
         try:
@@ -71,6 +83,15 @@ class App(tk.Tk):
         self.lbl_salida.pack(side="left", fill="x", expand=True)
         ttk.Button(drow, text="Change...", command=self.cambiar_salida).pack(side="left", padx=(6, 0))
         ttk.Button(drow, text="Default", command=self.reset_salida).pack(side="left", padx=(6, 0))
+
+        # Formato de salida
+        fmt = ttk.Frame(cont)
+        fmt.pack(fill="x", pady=(0, 10))
+        ttk.Label(fmt, text="Format:", font=("Segoe UI", 9, "bold")).pack(side="left")
+        ttk.Radiobutton(fmt, text="Plain text (.txt)", value="txt",
+                        variable=self.formato, command=self._save).pack(side="left", padx=(8, 0))
+        ttk.Radiobutton(fmt, text="Markdown (.md)", value="md",
+                        variable=self.formato, command=self._save).pack(side="left", padx=(8, 0))
 
         fila = ttk.Frame(cont)
         fila.pack(fill="x")
@@ -101,10 +122,13 @@ class App(tk.Tk):
         self.log.see("end")
         self.log.configure(state="disabled")
 
+    def _save(self):
+        guardar_config(self.salida, self.formato.get())
+
     def _set_salida(self, ruta):
         self.salida = ruta
         self.lbl_salida.configure(text=ruta)
-        guardar_salida(ruta)
+        self._save()
 
     def cambiar_salida(self):
         ruta = filedialog.askdirectory(title="Choose output folder", initialdir=self.salida)
@@ -133,7 +157,7 @@ class App(tk.Tk):
             base = os.path.basename(r)
             self.estado.configure(text=f"Converting {i}/{total}: {base}")
             try:
-                convertir(r, self.salida)
+                convertir(r, self.salida, self.formato.get())
                 ok += 1
                 self.escribir(f"OK    {base}")
             except Exception as e:
