@@ -1,0 +1,12 @@
+# Build artifacts
+build/
+dist/
+*.spec
+
+# Output
+txts/
+textos/
+
+# Python
+__pycache__/
+*.pyc
