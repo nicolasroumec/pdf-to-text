@@ -3,9 +3,10 @@ build/
 dist/
 *.spec
 
-# Output
+# Output & config
 txts/
 textos/
+config.json
 
 # Python
 __pycache__/

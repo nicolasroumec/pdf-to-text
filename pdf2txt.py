@@ -1,21 +1,35 @@
 import os
 import sys
+import json
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog
 from pypdf import PdfReader
 
-# Carpeta fija donde van todos los .txt: subcarpeta "txts" al lado del .exe
 BASE = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else __file__)
-SALIDA = os.path.join(BASE, "txts")
+DEFAULT_SALIDA = os.path.join(BASE, "txts")  # por defecto: subcarpeta al lado del .exe
+CONFIG = os.path.join(BASE, "config.json")
 
 
-def convertir(pdf_path):
-    os.makedirs(SALIDA, exist_ok=True)
+def cargar_salida():
+    try:
+        with open(CONFIG, encoding="utf-8") as f:
+            return json.load(f).get("salida") or DEFAULT_SALIDA
+    except (OSError, ValueError):
+        return DEFAULT_SALIDA
+
+
+def guardar_salida(ruta):
+    with open(CONFIG, "w", encoding="utf-8") as f:
+        json.dump({"salida": ruta}, f)
+
+
+def convertir(pdf_path, salida):
+    os.makedirs(salida, exist_ok=True)
     reader = PdfReader(pdf_path)
     texto = "\n".join((p.extract_text() or "") for p in reader.pages)
     nombre = os.path.splitext(os.path.basename(pdf_path))[0] + ".txt"
-    txt_path = os.path.join(SALIDA, nombre)
+    txt_path = os.path.join(salida, nombre)
     with open(txt_path, "w", encoding="utf-8") as f:
         f.write(texto)
     return txt_path
@@ -25,9 +39,10 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("PDF to Text")
-        self.geometry("460x360")
-        self.minsize(420, 320)
+        self.geometry("480x420")
+        self.minsize(440, 380)
         self.configure(bg="#f4f4f5")
+        self.salida = cargar_salida()
 
         st = ttk.Style(self)
         try:
@@ -42,8 +57,20 @@ class App(tk.Tk):
 
         ttk.Label(cont, text="Convert PDF to Text",
                   font=("Segoe UI", 15, "bold")).pack(anchor="w")
-        ttk.Label(cont, text="Pick one or more PDFs. The .txt files go to the 'txts' folder.",
+        ttk.Label(cont, text="Pick one or more PDFs. Choose where the .txt files are saved.",
                   font=("Segoe UI", 9), foreground="#666").pack(anchor="w", pady=(2, 12))
+
+        # Fila de carpeta de salida
+        dest = ttk.Frame(cont)
+        dest.pack(fill="x", pady=(0, 10))
+        ttk.Label(dest, text="Output folder:", font=("Segoe UI", 9, "bold")).pack(anchor="w")
+        drow = ttk.Frame(dest)
+        drow.pack(fill="x", pady=(2, 0))
+        self.lbl_salida = ttk.Label(drow, text=self.salida, font=("Segoe UI", 9),
+                                    foreground="#0a58ca")
+        self.lbl_salida.pack(side="left", fill="x", expand=True)
+        ttk.Button(drow, text="Change...", command=self.cambiar_salida).pack(side="left", padx=(6, 0))
+        ttk.Button(drow, text="Default", command=self.reset_salida).pack(side="left", padx=(6, 0))
 
         fila = ttk.Frame(cont)
         fila.pack(fill="x")
@@ -74,9 +101,22 @@ class App(tk.Tk):
         self.log.see("end")
         self.log.configure(state="disabled")
 
+    def _set_salida(self, ruta):
+        self.salida = ruta
+        self.lbl_salida.configure(text=ruta)
+        guardar_salida(ruta)
+
+    def cambiar_salida(self):
+        ruta = filedialog.askdirectory(title="Choose output folder", initialdir=self.salida)
+        if ruta:
+            self._set_salida(ruta)
+
+    def reset_salida(self):
+        self._set_salida(DEFAULT_SALIDA)
+
     def abrir_carpeta(self):
-        os.makedirs(SALIDA, exist_ok=True)
-        os.startfile(SALIDA)  # ponytail: solo Windows, que es el target del .exe
+        os.makedirs(self.salida, exist_ok=True)
+        os.startfile(self.salida)  # ponytail: solo Windows, que es el target del .exe
 
     def elegir(self):
         rutas = filedialog.askopenfilenames(
@@ -93,7 +133,7 @@ class App(tk.Tk):
             base = os.path.basename(r)
             self.estado.configure(text=f"Converting {i}/{total}: {base}")
             try:
-                convertir(r)
+                convertir(r, self.salida)
                 ok += 1
                 self.escribir(f"OK    {base}")
             except Exception as e:
