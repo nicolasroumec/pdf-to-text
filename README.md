@@ -13,10 +13,10 @@ python pdf2txt.py
 ## Build the .exe (Windows)
 
 ```bash
-python -m PyInstaller --onefile --windowed --name PDFaTexto pdf2txt.py
+python -m PyInstaller --onefile --windowed --name PDFtoText pdf2txt.py
 ```
 
-The executable ends up in `dist/PDFaTexto.exe`. Share that single file — it
+The executable ends up in `dist/PDFtoText.exe`. Share that single file — it
 runs without Python installed.
 
 ## Notes

@@ -69,7 +69,7 @@ class App(tk.Tk):
 
         ttk.Label(cont, text="Convert PDF to Text",
                   font=("Segoe UI", 15, "bold")).pack(anchor="w")
-        ttk.Label(cont, text="Pick one or more PDFs. Choose where the .txt files are saved.",
+        ttk.Label(cont, text="Pick one or more PDFs. Choose where the files are saved.",
                   font=("Segoe UI", 9), foreground="#666").pack(anchor="w", pady=(2, 12))
 
         # Fila de carpeta de salida
@@ -117,6 +117,7 @@ class App(tk.Tk):
         self.log.pack(side="left", fill="both", expand=True)
 
     def escribir(self, linea):
+        # ponytail: Tk no es thread-safe; el worker llama esto vía self.after
         self.log.configure(state="normal")
         self.log.insert("end", linea + "\n")
         self.log.see("end")
@@ -151,20 +152,22 @@ class App(tk.Tk):
 
     def trabajar(self, rutas):
         total = len(rutas)
-        self.bar.configure(maximum=total, value=0)
+        fmt = self.formato.get()
+        self.after(0, lambda: self.bar.configure(maximum=total, value=0))
         ok = 0
         for i, r in enumerate(rutas, 1):
             base = os.path.basename(r)
-            self.estado.configure(text=f"Converting {i}/{total}: {base}")
+            self.after(0, lambda i=i, base=base:
+                       self.estado.configure(text=f"Converting {i}/{total}: {base}"))
             try:
-                convertir(r, self.salida, self.formato.get())
+                convertir(r, self.salida, fmt)
                 ok += 1
-                self.escribir(f"OK    {base}")
+                self.after(0, lambda base=base: self.escribir(f"OK    {base}"))
             except Exception as e:
-                self.escribir(f"FAIL  {base}: {e}")
-            self.bar.configure(value=i)
-        self.estado.configure(text=f"Done: {ok}/{total} converted.")
-        self.btn.configure(state="normal")
+                self.after(0, lambda base=base, e=e: self.escribir(f"FAIL  {base}: {e}"))
+            self.after(0, lambda i=i: self.bar.configure(value=i))
+        self.after(0, lambda: self.estado.configure(text=f"Done: {ok}/{total} converted."))
+        self.after(0, lambda: self.btn.configure(state="normal"))
 
 
 if __name__ == "__main__":
